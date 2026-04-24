@@ -238,21 +238,33 @@ async def send_digest_now(test: bool = False):
 
 
 def _send_email(trades, subject_prefix=""):
-    if not EMAIL_USER or not EMAIL_PASSWORD:
-        log.warning("EMAIL_USER / EMAIL_PASSWORD not set, skipping email")
+    if not RESEND_API_KEY:
+        log.warning("RESEND_API_KEY not set")
         return
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"{subject_prefix}POLYBOTT: {len(trades)} Congress Trade(s)"
-    msg["From"] = f"Polybott <{EMAIL_USER}>"
-    msg["To"] = EMAIL_TO
-    msg.attach(MIMEText(build_email_html(trades), "html"))
+    import urllib.request, urllib.error
+    payload = json.dumps({
+        "from": "Polybott <onboarding@resend.dev>",
+        "to": [EMAIL_TO],
+        "subject": f"{subject_prefix}POLYBOTT: {len(trades)} Congress Trade(s)",
+        "html": build_email_html(trades),
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "polybott/1.0",
+        },
+        method="POST",
+    )
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
-            smtp.sendmail(EMAIL_USER, EMAIL_TO, msg.as_string())
-        log.info(f"Email sent to {EMAIL_TO}")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            body = r.read().decode()
+            log.info(f"Email sent: {r.status} {body}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        log.error(f"Resend error {e.code}: {body}")
     except Exception as e:
         log.error(f"Email failed: {e}")
 
