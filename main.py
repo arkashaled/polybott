@@ -152,7 +152,7 @@ def build_email_html(trades):
       <td>
         <h1 style="margin:0 0 4px 0;font-size:22px;letter-spacing:3px;color:#58a6ff">POLYBOTT</h1>
         <p style="margin:0 0 20px 0;color:#8b949e;font-size:14px">Congress Trading Alert &mdash; {date_str}</p>
-        <p style="margin:0 0 16px 0;font-size:15px"><strong>{len(trades)}</strong> trade(s) filed in the last 24 hours</p>
+        <p style="margin:0 0 16px 0;font-size:15px"><strong>{len(trades)}</strong> new trade(s) filed in the last 24 hours</p>
         <div style="overflow-x:auto">
           <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden">
             <thead><tr style="background:#0d1117">{header_row}</tr></thead>
@@ -225,12 +225,13 @@ async def send_digest_now(test: bool = False):
     loop = asyncio.get_event_loop()
 
     if test:
-        # Send sample of most recent 20 trades regardless of filing date
-        sample = state["trades"][:20]
+        trades_24h = get_trades_last_24h()
+        sample = trades_24h if trades_24h else state["trades"][:5]
         if not sample:
             return {"sent": False, "reason": "no trades loaded"}
+        label = "last 24h" if trades_24h else "sample (no 24h trades yet)"
         await loop.run_in_executor(None, lambda: _send_email(sample, subject_prefix="[TEST] "))
-        return {"sent": True, "sample_size": len(sample)}
+        return {"sent": True, "trades_in_last_24h": len(trades_24h), "sent_count": len(sample), "label": label}
 
     await loop.run_in_executor(None, send_daily_digest)
     trades = get_trades_last_24h()
