@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -14,46 +13,83 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 QUIVER_TOKEN = os.environ.get("QUIVER_TOKEN", "")
-QUIVER_URL = "https://api.quiverquant.com/beta/bulk/congresstrading"
 PAGE_SIZE = 100
+
+ENDPOINTS = [
+    "https://api.quiverquant.com/beta/bulk/congresstrading",
+    "https://api.quiverquant.com/beta/historical/congresstrading",
+    "https://api.quiverquant.com/beta/bulk/housetrading",
+    "https://api.quiverquant.com/beta/bulk/senatetrading",
+]
 
 app = FastAPI()
 state: dict = {"trades": [], "last_updated": None, "error": None, "refreshing": False}
 
 
-async def fetch_all_trades():
-    log.info("Fetching trades from Quiver...")
-    headers = {"Authorization": f"Bearer {QUIVER_TOKEN}", "Accept": "application/json"}
-    all_trades = []
-    page = 1
+def dedup(trades: list) -> list:
+    seen = set()
+    out = []
+    for t in trades:
+        key = (
+            t.get("BioGuideID") or t.get("representative") or t.get("Name", ""),
+            t.get("Ticker", ""),
+            t.get("Traded", ""),
+            t.get("Transaction", ""),
+        )
+        if key not in seen:
+            seen.add(key)
+            out.append(t)
+    return out
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        while True:
-            try:
-                r = await client.get(
-                    QUIVER_URL,
-                    headers=headers,
-                    params={"page": page, "page_size": PAGE_SIZE, "version": "V2"},
-                )
-                r.raise_for_status()
-                data = r.json()
-                if not data:
-                    break
-                all_trades.extend(data)
-                log.info(f"Page {page}: {len(data)} trades")
-                if len(data) < PAGE_SIZE:
-                    break
-                page += 1
-            except Exception as e:
-                log.error(f"Error on page {page}: {e}")
-                state["error"] = str(e)
+
+async def fetch_endpoint(client: httpx.AsyncClient, url: str) -> list:
+    headers = {"Authorization": f"Bearer {QUIVER_TOKEN}", "Accept": "application/json"}
+    results = []
+    page = 1
+    while True:
+        try:
+            r = await client.get(url, headers=headers,
+                                 params={"page": page, "page_size": PAGE_SIZE, "version": "V2"},
+                                 timeout=30)
+            if r.status_code in (401, 403, 404):
+                log.warning(f"{url} returned {r.status_code}, skipping")
                 break
+            r.raise_for_status()
+            data = r.json()
+            if not data or not isinstance(data, list):
+                break
+            results.extend(data)
+            log.info(f"{url} page {page}: {len(data)} records")
+            if len(data) < PAGE_SIZE:
+                break
+            page += 1
+        except Exception as e:
+            log.error(f"{url} page {page} error: {e}")
+            break
+    return results
+
+
+async def fetch_all_trades():
+    log.info("Fetching trades from all Quiver endpoints...")
+    all_trades = []
+
+    async with httpx.AsyncClient() as client:
+        for url in ENDPOINTS:
+            records = await fetch_endpoint(client, url)
+            log.info(f"{url}: {len(records)} total records")
+            all_trades.extend(records)
+
+    all_trades = dedup(all_trades)
+    # Sort newest trade first
+    all_trades.sort(key=lambda t: t.get("Traded") or "", reverse=True)
 
     if all_trades:
         state["trades"] = all_trades
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
         state["error"] = None
-        log.info(f"Loaded {len(all_trades)} trades total")
+        log.info(f"Total unique trades loaded: {len(all_trades)}")
+    else:
+        state["error"] = "No data returned from any endpoint"
 
 
 scheduler = AsyncIOScheduler()
