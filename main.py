@@ -49,7 +49,7 @@ async def fetch_endpoint(client: httpx.AsyncClient, url: str) -> list:
     while True:
         try:
             r = await client.get(url, headers=headers,
-                                 params={"page": page, "page_size": PAGE_SIZE, "version": "V2", "date": "20120101"},
+                                 params={"page": page, "page_size": PAGE_SIZE, "version": "V2"},
                                  timeout=30)
             if r.status_code in (401, 403, 404):
                 log.warning(f"{url} returned {r.status_code}, skipping")
