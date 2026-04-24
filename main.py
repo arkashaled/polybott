@@ -178,19 +178,7 @@ def send_daily_digest():
         log.info("No new filings, skipping email")
         return
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"POLYBOTT: {len(trades)} Congress Trade(s) Filed Today"
-    msg["From"] = f"Polybott <{EMAIL_USER}>"
-    msg["To"] = EMAIL_TO
-    msg.attach(MIMEText(build_email_html(trades), "html"))
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
-            smtp.sendmail(EMAIL_USER, EMAIL_TO, msg.as_string())
-        log.info(f"Digest sent to {EMAIL_TO}")
-    except Exception as e:
-        log.error(f"Email send failed: {e}")
+    _send_email(trades)
 
 
 scheduler = AsyncIOScheduler()
@@ -235,12 +223,39 @@ async def refresh():
 
 
 @app.post("/api/send-digest")
-async def send_digest_now():
+async def send_digest_now(test: bool = False):
     import asyncio
     loop = asyncio.get_event_loop()
+
+    if test:
+        # Send sample of most recent 20 trades regardless of filing date
+        sample = state["trades"][:20]
+        if not sample:
+            return {"sent": False, "reason": "no trades loaded"}
+        await loop.run_in_executor(None, lambda: _send_email(sample, subject_prefix="[TEST] "))
+        return {"sent": True, "sample_size": len(sample)}
+
     await loop.run_in_executor(None, send_daily_digest)
     trades = get_trades_last_24h()
     return {"sent": True, "trades_in_last_24h": len(trades)}
+
+
+def _send_email(trades, subject_prefix=""):
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        log.warning("Email credentials not set")
+        return
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"{subject_prefix}POLYBOTT: {len(trades)} Congress Trade(s)"
+    msg["From"] = f"Polybott <{EMAIL_USER}>"
+    msg["To"] = EMAIL_TO
+    msg.attach(MIMEText(build_email_html(trades), "html"))
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
+            smtp.sendmail(EMAIL_USER, EMAIL_TO, msg.as_string())
+        log.info(f"Email sent to {EMAIL_TO}")
+    except Exception as e:
+        log.error(f"Email failed: {e}")
 
 
 @app.get("/api/health")
