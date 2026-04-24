@@ -54,11 +54,6 @@ const columns = [
     cell: ({ getValue }) => <strong className="ticker">{getValue() || '—'}</strong>,
   },
   {
-    accessorKey: 'Company',
-    header: 'Company',
-    cell: ({ getValue }) => <span className="muted">{getValue() || '—'}</span>,
-  },
-  {
     accessorKey: 'Transaction',
     header: 'Type',
     cell: ({ getValue }) => {
@@ -109,6 +104,11 @@ const columns = [
     accessorKey: 'State',
     header: 'State',
     cell: ({ getValue }) => getValue() || '—',
+  },
+  {
+    accessorKey: 'Company',
+    header: 'Company',
+    cell: ({ getValue }) => <span className="muted">{getValue() || '—'}</span>,
   },
 ]
 
