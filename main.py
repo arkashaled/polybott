@@ -1,7 +1,10 @@
 import json
 import logging
 import os
+import smtplib
 from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import httpx
@@ -18,6 +21,8 @@ QUIVER_URL = "https://api.quiverquant.com/beta/bulk/congresstrading"
 PAGE_SIZE = 100
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_USER = os.environ.get("EMAIL_USER", "")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "")
 EMAIL_TO = "arkashaled@gmail.com"
 
 app = FastAPI()
@@ -233,28 +238,21 @@ async def send_digest_now(test: bool = False):
 
 
 def _send_email(trades, subject_prefix=""):
-    if not RESEND_API_KEY:
-        log.warning("RESEND_API_KEY not set, skipping email")
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        log.warning("EMAIL_USER / EMAIL_PASSWORD not set, skipping email")
         return
-    import urllib.request
-    payload = json.dumps({
-        "from": "Polybott <onboarding@resend.dev>",
-        "to": [EMAIL_TO],
-        "subject": f"{subject_prefix}POLYBOTT: {len(trades)} Congress Trade(s)",
-        "html": build_email_html(trades),
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"{subject_prefix}POLYBOTT: {len(trades)} Congress Trade(s)"
+    msg["From"] = f"Polybott <{EMAIL_USER}>"
+    msg["To"] = EMAIL_TO
+    msg.attach(MIMEText(build_email_html(trades), "html"))
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            log.info(f"Email sent: {r.status} {r.read()}")
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.login(EMAIL_USER, EMAIL_PASSWORD)
+            smtp.sendmail(EMAIL_USER, EMAIL_TO, msg.as_string())
+        log.info(f"Email sent to {EMAIL_TO}")
     except Exception as e:
         log.error(f"Email failed: {e}")
 
