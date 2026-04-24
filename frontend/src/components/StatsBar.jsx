@@ -1,58 +1,50 @@
 import { useMemo } from 'react'
 
+function parseMidpoint(s) {
+  if (!s) return 0
+  const clean = s.replace(/[$,]/g, '').toLowerCase()
+  if (clean.includes('over')) return parseFloat(clean.replace('over', '').trim()) * 1.5
+  const parts = clean.split(/[-–]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n))
+  return parts.length === 2 ? (parts[0] + parts[1]) / 2 : parts[0] || 0
+}
+
+function fmtVolume(n) {
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`
+  return `$${n.toFixed(0)}`
+}
+
 export default function StatsBar({ trades, filtered }) {
   const stats = useMemo(() => {
-    const buys = filtered.filter(t => (t.Transaction || '').toLowerCase().includes('purchase')).length
-    const sells = filtered.length - buys
+    const filings = new Set(
+      filtered.map(t => `${t.BioGuideID || t.representative}_${t.Filed}`).filter(Boolean)
+    ).size
 
-    const repCounts = {}
-    filtered.forEach(t => {
-      const name = t.representative || t.Name || 'Unknown'
-      repCounts[name] = (repCounts[name] || 0) + 1
-    })
-    const topRep = Object.entries(repCounts).sort((a, b) => b[1] - a[1])[0]
+    const issuers = new Set(filtered.map(t => t.Ticker).filter(Boolean)).size
 
-    const tickerCounts = {}
-    filtered.forEach(t => {
-      if (t.Ticker) tickerCounts[t.Ticker] = (tickerCounts[t.Ticker] || 0) + 1
-    })
-    const topTicker = Object.entries(tickerCounts).sort((a, b) => b[1] - a[1])[0]
+    const volume = filtered.reduce((sum, t) => sum + parseMidpoint(t.Trade_Size_USD), 0)
 
-    const lags = filtered
-      .map(t => t.Traded && t.Filed
-        ? Math.round((new Date(t.Filed) - new Date(t.Traded)) / 86400000)
-        : null)
-      .filter(d => d !== null)
-    const avgLag = lags.length ? Math.round(lags.reduce((a, b) => a + b, 0) / lags.length) : 0
-
-    return { buys, sells, topRep, topTicker, avgLag }
+    return { trades: filtered.length, filings, volume, issuers }
   }, [filtered])
 
   return (
     <div className="stats-bar">
-      <div className="stat">
-        <div className="stat-label">Total</div>
-        <div className="stat-value">{filtered.length.toLocaleString()}</div>
+      <div className="stat-counter">
+        <div className="stat-counter-value">{stats.trades.toLocaleString()}</div>
+        <div className="stat-counter-label">TRADES</div>
       </div>
-      <div className="stat">
-        <div className="stat-label">Buys</div>
-        <div className="stat-value buy">{stats.buys.toLocaleString()}</div>
+      <div className="stat-counter">
+        <div className="stat-counter-value">{stats.filings.toLocaleString()}</div>
+        <div className="stat-counter-label">FILINGS</div>
       </div>
-      <div className="stat">
-        <div className="stat-label">Sells</div>
-        <div className="stat-value sell">{stats.sells.toLocaleString()}</div>
+      <div className="stat-counter">
+        <div className="stat-counter-value">{fmtVolume(stats.volume)}</div>
+        <div className="stat-counter-label">VOLUME</div>
       </div>
-      <div className="stat">
-        <div className="stat-label">Top Member</div>
-        <div className="stat-value sm">{stats.topRep ? `${stats.topRep[0]} (${stats.topRep[1]})` : '—'}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-label">Top Ticker</div>
-        <div className="stat-value accent">{stats.topTicker ? `${stats.topTicker[0]} (${stats.topTicker[1]})` : '—'}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-label">Avg Lag</div>
-        <div className="stat-value">{stats.avgLag}d</div>
+      <div className="stat-counter">
+        <div className="stat-counter-value">{stats.issuers.toLocaleString()}</div>
+        <div className="stat-counter-label">ISSUERS</div>
       </div>
     </div>
   )
