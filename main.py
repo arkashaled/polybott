@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -5,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -17,7 +18,7 @@ QUIVER_URL = "https://api.quiverquant.com/beta/bulk/congresstrading"
 PAGE_SIZE = 100
 
 app = FastAPI()
-state: dict = {"trades": [], "last_updated": None, "error": None}
+state: dict = {"trades": [], "last_updated": None, "error": None, "refreshing": False}
 
 
 async def fetch_all_trades():
@@ -72,6 +73,22 @@ async def shutdown():
 
 @app.get("/api/trades")
 async def get_trades():
+    return {
+        "trades": state["trades"],
+        "last_updated": state["last_updated"],
+        "count": len(state["trades"]),
+    }
+
+
+@app.post("/api/refresh")
+async def refresh():
+    if state["refreshing"]:
+        raise HTTPException(status_code=429, detail="Refresh already in progress")
+    state["refreshing"] = True
+    try:
+        await fetch_all_trades()
+    finally:
+        state["refreshing"] = False
     return {
         "trades": state["trades"],
         "last_updated": state["last_updated"],

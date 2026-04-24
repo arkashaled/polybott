@@ -65,6 +65,21 @@ body {
 
 .last-updated { color: var(--muted); font-size: 12px; }
 
+.refresh-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.refresh-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-btn.refreshing { color: var(--accent); border-color: var(--accent); }
+
 /* Stats bar */
 .stats-bar {
   display: flex;

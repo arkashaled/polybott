@@ -7,6 +7,7 @@ import './App.css'
 export default function App() {
   const [data, setData] = useState({ trades: [], last_updated: null, count: 0 })
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [repSearch, setRepSearch] = useState('')
   const [tickerSearch, setTickerSearch] = useState('')
   const [party, setParty] = useState('all')
@@ -60,6 +61,19 @@ export default function App() {
     ? new Date(data.last_updated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : null
 
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      const r = await fetch('/api/refresh', { method: 'POST' })
+      const d = await r.json()
+      setData(d)
+    } catch (e) {
+      console.error('Refresh failed', e)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -70,6 +84,13 @@ export default function App() {
         <div className="header-right">
           <span className="live-badge">● LIVE</span>
           {lastUpdated && <span className="last-updated">Updated {lastUpdated}</span>}
+          <button
+            className={`refresh-btn ${refreshing ? 'refreshing' : ''}`}
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? '⟳ Fetching...' : '⟳ Refresh'}
+          </button>
         </div>
       </header>
 
